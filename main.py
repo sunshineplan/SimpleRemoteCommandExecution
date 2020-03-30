@@ -3,15 +3,22 @@
 
 from datetime import datetime
 from email.message import EmailMessage
+from secrets import token_bytes
 from smtplib import SMTP
 from subprocess import Popen, TimeoutExpired
 
 from flask import Flask, Response, abort, request
 
+from flask_httpauth import HTTPDigestAuth
+
 ALLOW_COMMAND = {
     'command1': ['arg1', 'arg2', 'arg3'],
     'command2': ['arg1'],
     'command3': []
+}
+ALLOW_USERS = {
+    'user1': 'password',
+    'user2': 'password'
 }
 DIR = '/dir/'
 
@@ -22,7 +29,7 @@ PWD = ''  # sender auth password
 SUBSCRIBER = ''  # subscriber mail address
 
 
-def emailNotify(ip, cmd):
+def emailNotify(user, ip, cmd):
     msg = EmailMessage()
     msg['Subject'] = f"Notification - {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
     msg['From'] = SENDER
@@ -30,7 +37,7 @@ def emailNotify(ip, cmd):
     if isinstance(cmd, list):
         cmd = ' '.join(cmd)
     msg.set_content(
-        f"{datetime.now().strftime('%Y/%m/%d-%H:%M:%S')}\nIP: {ip}\n\nCommand: {cmd}")
+        f"{datetime.now().strftime('%Y/%m/%d-%H:%M:%S')}\nUser: {user}\nIP: {ip}\n\nCommand: {cmd}")
     with SMTP(SMTP_SERVER, SMTP_SERVER_PORT) as s:
         s.starttls()
         s.login(SENDER, PWD)
@@ -38,6 +45,15 @@ def emailNotify(ip, cmd):
 
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = token_bytes(16)
+auth = HTTPDigestAuth()
+
+
+@auth.get_password
+def get_pw(username):
+    if username in ALLOW_USERS:
+        return ALLOW_USERS[username]
+    return None
 
 
 @app.route('/')
@@ -49,6 +65,7 @@ def main(unknow=None):
 @app.route('/bash/<string:cmd>')
 @app.route('/bash/<string:cmd>/')
 @app.route('/bash/<string:cmd>/<string:arg>')
+@auth.login_required
 def bash(cmd, arg=None):
     if cmd not in ALLOW_COMMAND.keys():
         abort(403)
@@ -58,7 +75,7 @@ def bash(cmd, arg=None):
         command = [f'{DIR}{cmd}', arg]
     else:
         command = f'{DIR}{cmd}'
-    emailNotify(request.remote_addr, command)
+    emailNotify(auth.username, request.remote_addr, command)
     proc = Popen(command, stdout=-1, stderr=-1)
     try:
         outs, errs = proc.communicate(timeout=30)
