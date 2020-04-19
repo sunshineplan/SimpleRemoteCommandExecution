@@ -7,7 +7,7 @@ from secrets import token_bytes
 from smtplib import SMTP
 from subprocess import Popen, TimeoutExpired
 
-from flask import Flask, Response, abort, request
+from flask import Flask, Response, request
 
 from flask_httpauth import HTTPDigestAuth
 
@@ -16,31 +16,40 @@ ALLOW_COMMAND = {
     'command2': ['arg1'],
     'command3': []
 }
+
 ALLOW_USERS = {
     'user1': 'password',
     'user2': 'password'
 }
-DIR = '/dir/'
 
-SENDER = ''  # sender mail address
-SMTP_SERVER = ''  # sender smtp server
-SMTP_SERVER_PORT = 587  # sender smtp server port
-PWD = ''  # sender auth password
-SUBSCRIBER = ''  # subscriber mail address
+PATH = '/path/'
+
+SUBSCRIBE = {
+    'sender': '',  # sender mail address
+    'smtp_server': '',  # sender smtp server
+    'smtp_server_port': 587,  # sender smtp server port
+    'password': '',  # sender auth password
+    'subscriber': ''  # subscriber mail address
+}
 
 
 def emailNotify(user, ip, cmd):
+    try:
+        from metadata import metadata
+        SUBSCRIBE = metadata('srce_subscribe', ERROR_IF_NONE=True)
+    except:
+        pass
     msg = EmailMessage()
-    msg['Subject'] = f"Notification - {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
-    msg['From'] = SENDER
-    msg['To'] = SUBSCRIBER
+    msg['Subject'] = f"SRCE Notification - {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
+    msg['From'] = SUBSCRIBE['sender']
+    msg['To'] = SUBSCRIBE['subscriber']
     if isinstance(cmd, list):
         cmd = ' '.join(cmd)
     msg.set_content(
         f"{datetime.now().strftime('%Y/%m/%d-%H:%M:%S')}\nUser: {user}\nIP: {ip}\n\nCommand: {cmd}")
-    with SMTP(SMTP_SERVER, SMTP_SERVER_PORT) as s:
+    with SMTP(SUBSCRIBE['smtp_server'], SUBSCRIBE['smtp_server_port']) as s:
         s.starttls()
-        s.login(SENDER, PWD)
+        s.login(SUBSCRIBE['sender'], SUBSCRIBE['password'])
         s.send_message(msg)
 
 
@@ -51,6 +60,11 @@ auth = HTTPDigestAuth()
 
 @auth.get_password
 def get_pw(username):
+    try:
+        from metadata import metadata
+        ALLOW_USERS = metadata('srce_user', ERROR_IF_NONE=True)
+    except:
+        pass
     if username in ALLOW_USERS:
         return ALLOW_USERS[username]
     return None
@@ -59,7 +73,7 @@ def get_pw(username):
 @app.route('/')
 @app.route('/<path:unknow>')
 def main(unknow=None):
-    abort(403)
+    return '', 403
 
 
 @app.route('/bash/<string:cmd>')
@@ -67,14 +81,20 @@ def main(unknow=None):
 @app.route('/bash/<string:cmd>/<string:arg>')
 @auth.login_required
 def bash(cmd, arg=None):
+    try:
+        from metadata import metadata
+        ALLOW_COMMAND = metadata('srce_command', ERROR_IF_NONE=True)
+        PATH = metadata('srce_path', ERROR_IF_NONE=True)
+    except:
+        pass
     if cmd not in ALLOW_COMMAND.keys():
-        abort(403)
+        return '', 403
     if arg:
         if arg not in ALLOW_COMMAND[cmd]:
-            abort(403)
-        command = [f'{DIR}{cmd}', arg]
+            return '', 403
+        command = [f'{PATH}{cmd}', arg]
     else:
-        command = f'{DIR}{cmd}'
+        command = f'{PATH}{cmd}'
     emailNotify(auth.username, request.remote_addr, command)
     proc = Popen(command, stdout=-1, stderr=-1)
     try:
