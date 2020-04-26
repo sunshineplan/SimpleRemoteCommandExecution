@@ -1,0 +1,9 @@
+[Unit]
+Description=uWSGI instance to serve Simple Remote Command Execution
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/uwsgi --ini /var/www/srce/SRCE.ini
+
+[Install]
+WantedBy=multi-user.target

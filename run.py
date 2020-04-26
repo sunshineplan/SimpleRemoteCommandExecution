@@ -11,20 +11,26 @@ from flask import Flask, Response, request
 
 from flask_httpauth import HTTPDigestAuth
 
-ALLOW_COMMAND = {
+try:
+    from metadata import metadata
+except:
+    def metadata(_, value): return value
+
+
+_ALLOW_COMMAND = {
     'command1': ['arg1', 'arg2', 'arg3'],
     'command2': ['arg1'],
     'command3': []
 }
 
-ALLOW_USERS = {
+_ALLOW_USERS = {
     'user1': 'password',
     'user2': 'password'
 }
 
-PATH = '/path/'
+_PATH = '/path/'
 
-SUBSCRIBE = {
+_SUBSCRIBE = {
     'sender': '',  # sender mail address
     'smtp_server': '',  # sender smtp server
     'smtp_server_port': 587,  # sender smtp server port
@@ -34,11 +40,7 @@ SUBSCRIBE = {
 
 
 def emailNotify(user, ip, cmd):
-    try:
-        from metadata import metadata
-        SUBSCRIBE = metadata('srce_subscribe', ERROR_IF_NONE=True)
-    except:
-        pass
+    SUBSCRIBE = metadata('srce_subscribe', _SUBSCRIBE)
     msg = EmailMessage()
     msg['Subject'] = f"SRCE Notification - {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
     msg['From'] = SUBSCRIBE['sender']
@@ -60,11 +62,7 @@ auth = HTTPDigestAuth()
 
 @auth.get_password
 def get_pw(username):
-    try:
-        from metadata import metadata
-        ALLOW_USERS = metadata('srce_user', ERROR_IF_NONE=True)
-    except:
-        pass
+    ALLOW_USERS = metadata('srce_user', _ALLOW_USERS)
     if username in ALLOW_USERS:
         return ALLOW_USERS[username]
     return None
@@ -81,12 +79,8 @@ def main(unknow=None):
 @app.route('/bash/<string:cmd>/<string:arg>')
 @auth.login_required
 def bash(cmd, arg=None):
-    try:
-        from metadata import metadata
-        ALLOW_COMMAND = metadata('srce_command', ERROR_IF_NONE=True)
-        PATH = metadata('srce_path', ERROR_IF_NONE=True)
-    except:
-        pass
+    ALLOW_COMMAND = metadata('srce_command', _ALLOW_COMMAND)
+    PATH = metadata('srce_path', _PATH)
     if cmd not in ALLOW_COMMAND.keys():
         return '', 403
     if arg:
